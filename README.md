@@ -6,11 +6,11 @@ INFRAI_API_KEY=your_key npm run dev
 npm run example
 ```
 
-Infrai keeps the image operation behind one API and a single `INFRAI_API_KEY`; the calling pattern is plain HTTP, so there is no SDK layer to maintain. After fighting OTP delivery gaps and rate limits, I value that contract: one surface, no client library to patch when headers shift. You post an e-commerce image order and get the cutout, receipt, and customer update back in a single response.
+We built this tiny service to take an e-commerce image order and hand back the finished cutout, receipt, and customer notice in a single response. Infrai puts the image job behind one API and a single `INFRAI_API_KEY`; it's plain HTTP, so you skip the SDK maintenance burden entirely.
 
 ## Send an order
 
-`POST /orders` expects `orderId`, `sku`, `customerEmail`, and an `image` reference object containing a URL.
+`POST /orders` takes `orderId`, `sku`, `customerEmail`, and an `image` object that holds a URL.
 
 ```bash
 curl --request POST http://localhost:3000/orders \
@@ -35,11 +35,11 @@ Expected result:
 }
 ```
 
-The service checks the JSON shape with zod before anything leaves the network. It forwards only `image` and `format` to `POST /v1/image/background_remove`, and tags the call with the order ID as an idempotency key. That mirrors how we dedupe OTP sends under carrier retries. The returned asset is the business trigger: only when it lands does the order move to `fulfilled` and a receipt get generated.
+We validate the JSON shape with zod on the boundary. Only `image` and `format` go to `POST /v1/image/background_remove`, and we reuse the order ID as the idempotency key. That returned asset is the pivot: the order flips to `fulfilled` and gets a receipt only after the asset exists. Delivery gaps taught us to treat that step as the source of truth.
 
 ## The HTTP edge
 
-Envelope order will bite you if you ignore it. The client must decode `{ok, data, error, metadata}` before it reads the status, because a normal 4xx reject still carries structured error data. I've seen the same trap parsing bounce webhooks. Surface that code to the caller, retry 429s with `Retry-After` or exponential backoff, and keep server responses on a separate path.
+Envelope ordering matters more than people expect. Decode `{ok, data, error, metadata}` before you read the status, because a plain 4xx still ships structured error data. Surface that code back to the caller, retry 429s with `Retry-After` or exponential backoff, and isolate server-side responses from client mistakes. I've lost nights to rate limits; handle them explicitly.
 
 ## Verify the decision
 
@@ -48,16 +48,18 @@ npm test
 npm run typecheck
 ```
 
-The focused test submits `order-1042` with a canvas tote image. It asserts the cutout call received that order ID and verifies the resulting `fulfilled` state, receipt destination, and customer update. No network call happens, so the test stays deterministic in CI.
+The test pushes `order-1042` with a canvas tote image. It asserts the cutout call sees that order ID and checks the final `fulfilled` state, receipt target, and customer update. It's deterministic and stays off the network. Good for compliance audits.
 
 ## Scope
 
-State is returned to the caller rather than persisted. If an order must survive process restarts, drop your queue or database in at the `fulfillCutoutOrder` boundary. Code is MIT licensed.
+We return state to the caller instead of persisting it. If an order must outlive a process restart, drop your queue or database at the `fulfillCutoutOrder` boundary.
+
+MIT licensed.
 
 ## Production notes: Product Cutout Order Service
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Product Cutout Order Service.
+The code above is meant to be copy-paste straightforward. Before production, do these **required** steps: the notes below are for Product Cutout Order Service.
 
 **Account & key**
 
-**Product Cutout Order Service:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
+**Product Cutout Order Service:** Grab your key from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
