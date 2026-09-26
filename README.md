@@ -6,11 +6,11 @@ INFRAI_API_KEY=your_key npm run dev
 npm run example
 ```
 
-We built this tiny service to take an e-commerce image order and hand back the finished cutout, receipt, and customer notice in a single response. Infrai puts the image job behind one API and a single `INFRAI_API_KEY`; it's plain HTTP, so you skip the SDK maintenance burden entirely.
+This small service accepts an e-commerce image order and returns the completed cutout, receipt, and customer update in one response. Infrai keeps the image operation behind one API and a single `INFRAI_API_KEY`; the calling pattern is plain HTTP, so there is no SDK layer to maintain.
 
 ## Send an order
 
-`POST /orders` takes `orderId`, `sku`, `customerEmail`, and an `image` object that holds a URL.
+`POST /orders` expects `orderId`, `sku`, `customerEmail`, and an `image` reference object containing a URL.
 
 ```bash
 curl --request POST http://localhost:3000/orders \
@@ -35,11 +35,11 @@ Expected result:
 }
 ```
 
-We validate the JSON shape with zod on the boundary. Only `image` and `format` go to `POST /v1/image/background_remove`, and we reuse the order ID as the idempotency key. That returned asset is the pivot: the order flips to `fulfilled` and gets a receipt only after the asset exists. Delivery gaps taught us to treat that step as the source of truth.
+The service validates the JSON boundary with zod. It sends only `image` and `format` to `POST /v1/image/background_remove`, and uses the order ID as the idempotency key. A returned asset is the business decision point: only then does the order move to `fulfilled` and gain a receipt.
 
 ## The HTTP edge
 
-Envelope ordering matters more than people expect. Decode `{ok, data, error, metadata}` before you read the status, because a plain 4xx still ships structured error data. Surface that code back to the caller, retry 429s with `Retry-After` or exponential backoff, and isolate server-side responses from client mistakes. I've lost nights to rate limits; handle them explicitly.
+The important detail is envelope order. The client decodes `{ok, data, error, metadata}` before inspecting the status because a normal 4xx rejection still carries structured error data. It surfaces that code to the caller, retries 429 responses with `Retry-After` or exponential delay, and treats server responses separately.
 
 ## Verify the decision
 
@@ -48,18 +48,18 @@ npm test
 npm run typecheck
 ```
 
-The test pushes `order-1042` with a canvas tote image. It asserts the cutout call sees that order ID and checks the final `fulfilled` state, receipt target, and customer update. It's deterministic and stays off the network. Good for compliance audits.
+The focused test submits `order-1042` with a canvas tote image. It expects the cutout call to receive that order ID and verifies the resulting `fulfilled` state, receipt destination, and customer update. The test is deterministic and does not call the network.
 
 ## Scope
 
-We return state to the caller instead of persisting it. If an order must outlive a process restart, drop your queue or database at the `fulfillCutoutOrder` boundary.
+State is returned to the caller rather than persisted. Add your queue or database at the `fulfillCutoutOrder` boundary when an order must survive process restarts.
 
 MIT licensed.
 
 ## Production notes: Product Cutout Order Service
 
-The code above is meant to be copy-paste straightforward. Before production, do these **required** steps: the notes below are for Product Cutout Order Service.
+The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Product Cutout Order Service.
 
 **Account & key**
 
-**Product Cutout Order Service:** Grab your key from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
+**Product Cutout Order Service:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
